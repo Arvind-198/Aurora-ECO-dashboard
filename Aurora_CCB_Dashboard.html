@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Aurora Pilot Build CCB Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0f172a;font-family:'Courier New',monospace;color:#e2e8f0;min-height:100vh}
+  button{cursor:pointer;font-family:inherit}
+  select,input{font-family:inherit}
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-track{background:#1e293b}
+  ::-webkit-scrollbar-thumb{background:#334155;border-radius:3px}
+
+  /* Header */
+  #header{background:linear-gradient(135deg,#0f172a,#1e293b);border-bottom:1px solid #1e40af;padding:18px 24px 14px}
+  #header-top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+  #title-block .eco-label{font-size:11px;color:#64748b;letter-spacing:3px;text-transform:uppercase;display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  #title-block h1{font-size:22px;font-weight:700;color:#f8fafc;letter-spacing:-0.5px}
+  #title-block .subtitle{font-size:11px;color:#475569;margin-top:4px}
+  #live-bar{display:flex;align-items:center;gap:12px}
+  .live-dot{width:8px;height:8px;background:#4ade80;border-radius:50%;box-shadow:0 0 6px #4ade80;animation:pulse 2s infinite}
+  .live-label{font-size:10px;color:#4ade80;letter-spacing:1px}
+  #last-updated{font-size:10px;color:#475569}
+  #refresh-btn{padding:5px 12px;background:#1e293b;border:1px solid #334155;border-radius:4px;color:#60a5fa;font-size:11px;font-weight:600}
+  #refresh-btn:hover{background:#1e3a5f}
+
+  /* Grand total banner */
+  #banner{background:linear-gradient(90deg,#1e3a5f,#1e293b);border-bottom:1px solid #1e40af;padding:10px 24px;display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+  #grand-total{display:flex;align-items:baseline;gap:10px}
+  #grand-total .num{font-size:36px;font-weight:800;color:#f8fafc;line-height:1;letter-spacing:-1px}
+  #grand-total .lbl{font-size:13px;color:#93c5fd;font-weight:700;text-transform:uppercase;letter-spacing:2px}
+  .banner-divider{width:1px;height:32px;background:#334155}
+  #banner-stats{display:flex;gap:20px;flex-wrap:wrap}
+  .banner-stat{display:flex;align-items:center;gap:6px}
+  .banner-stat .val{font-size:18px;font-weight:700}
+  .banner-stat .meta .name{font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px}
+  .banner-stat .meta .pct{font-size:9px;color:#475569}
+  #viewing-block{margin-left:auto;text-align:right}
+  #viewing-block .label{font-size:10px;color:#475569;text-transform:uppercase;letter-spacing:1px}
+  #viewing-count{font-size:20px;font-weight:700;color:#fbbf24}
+  #viewing-count span{font-size:11px;color:#64748b;font-weight:400}
+
+  /* Stats row */
+  #stats-row{display:flex;background:#1e293b;border-bottom:1px solid #1e40af;overflow-x:auto}
+  .stat-tile{flex:1 1 90px;padding:10px 14px;background:#0f172a;min-width:90px;border-right:1px solid #1e293b}
+  .stat-tile .n{font-size:24px;font-weight:800;line-height:1}
+  .stat-tile .l{font-size:9px;color:#64748b;margin-top:4px;text-transform:uppercase;letter-spacing:.8px;white-space:nowrap}
+
+  /* Tabs */
+  #tabs{display:flex;background:#1e293b;border-bottom:1px solid #334155;overflow-x:auto}
+  .tab{padding:10px 18px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;background:transparent;color:#64748b;letter-spacing:.5px;white-space:nowrap}
+  .tab.active{border-bottom-color:#3b82f6;background:#0f172a;color:#60a5fa}
+  .tab:hover:not(.active){color:#94a3b8}
+
+  /* Filters */
+  #filters{display:flex;gap:10px;padding:12px 16px;background:#0f172a;border-bottom:1px solid #1e293b;flex-wrap:wrap;align-items:center}
+  #search{flex:1 1 260px;padding:7px 12px;background:#1e293b;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:12px;outline:none}
+  #search::placeholder{color:#475569}
+  .filter-select{padding:7px 10px;background:#1e293b;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:11px;outline:none}
+  #filter-count{font-size:11px;color:#475569;margin-left:auto}
+
+  /* Table */
+  #table-wrap{overflow:auto;max-height:calc(100vh - 340px)}
+  table{width:100%;border-collapse:collapse;font-size:11px}
+  thead tr{background:#1e293b;position:sticky;top:0;z-index:10}
+  th{padding:8px 10px;text-align:left;color:#94a3b8;font-weight:700;letter-spacing:.5px;text-transform:uppercase;font-size:9px;border-bottom:1px solid #334155;white-space:nowrap;background:#1e293b}
+  th .col-key{color:#3b82f6;margin-right:4px}
+  tbody tr{cursor:pointer;transition:background .1s}
+  tbody tr:nth-child(even){background:#0b1120}
+  tbody tr:nth-child(odd){background:#0f172a}
+  tbody tr:hover{background:#1e293b !important}
+  tbody tr.expanded{background:#1e3a5f !important}
+  tbody tr.phase-in-row{border-left:3px solid #7c3aed}
+  td{padding:7px 10px;border-bottom:1px solid #1e293b}
+  .trunc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* Badges */
+  .badge{padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600;white-space:nowrap;display:inline-block}
+  .ct-new{background:#4a044e;color:#f0abfc}
+  .ct-rev{background:#0c2a4a;color:#93c5fd}
+  .impl-cutin{background:#dbeafe;color:#1e40af}
+  .impl-phasein{background:#ede9fe;color:#5b21b6}
+  .impl-ns{background:#1e293b;color:#64748b}
+  .eco-effective,.eco-complete,.eco-approved{background:#dcfce7;color:#166534}
+  .eco-approvals{background:#fef3c7;color:#92400e}
+  .eco-open{background:#fee2e2;color:#991b1b}
+  .eco-blank{background:#1e293b;color:#475569}
+  .cs-done{background:#dcfce7;color:#166534}
+  .cs-open{background:#fef9c3;color:#854d0e}
+  .cs-phasein{background:#ede9fe;color:#5b21b6}
+  .cs-tbc{background:#fee2e2;color:#991b1b}
+  .cs-blank{background:#1e293b;color:#475569}
+
+  /* Expanded row */
+  .exp-row td{background:#1e3a5f;padding:14px 20px;border-bottom:2px solid #3b82f6}
+  .exp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+  .exp-field .k{font-size:9px;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px}
+  .exp-field .v{color:#e2e8f0;font-size:12px;font-weight:600}
+  .exp-notes{grid-column:1/-1}
+  .exp-note-box{color:#cbd5e1;font-size:12px;line-height:1.6;background:#0f172a;padding:8px 12px;border-radius:4px}
+  .exp-note-blue{border-left:3px solid #3b82f6}
+  .exp-note-pink{border-left:3px solid #f472b6}
+
+  /* Footer */
+  #footer{padding:10px 16px;background:#0b1120;border-top:1px solid #1e293b;display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#334155;flex-wrap:wrap;gap:8px}
+  #export-btns{display:flex;gap:8px;align-items:center}
+  #export-btns span{font-size:10px;color:#475569}
+  .exp-btn-csv{padding:5px 14px;background:#1e293b;border:1px solid #334155;border-radius:4px;color:#34d399;font-size:11px;font-weight:700}
+  .exp-btn-xlsx{padding:5px 14px;background:#1e3a5f;border:1px solid #1e40af;border-radius:4px;color:#60a5fa;font-size:11px;font-weight:700}
+  .exp-btn-all{padding:5px 14px;background:#2d1f4a;border:1px solid #5b21b6;border-radius:4px;color:#a78bfa;font-size:11px;font-weight:700}
+  .exp-btn-csv:hover{background:#0f4c35}
+  .exp-btn-xlsx:hover{background:#1e40af}
+  .exp-btn-all:hover{background:#5b21b6}
+
+  /* Loading / Error */
+  #loading-screen,#error-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:16px}
+  #loading-screen{color:#60a5fa}
+  #loading-screen .spin{font-size:36px;animation:spin 1s linear infinite}
+  #loading-screen .msg{font-size:14px;letter-spacing:2px}
+  #error-screen{color:#f87171}
+  #error-screen .icon{font-size:28px}
+  #error-screen .msg{font-size:13px;text-align:center;max-width:400px}
+  #retry-btn{padding:8px 20px;background:#1e3a5f;border:1px solid #3b82f6;border-radius:4px;color:#60a5fa;font-size:13px}
+
+  @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+</style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading-screen">
+  <div class="spin">⟳</div>
+  <div class="msg">LOADING LIVE DATA…</div>
+</div>
+
+<!-- Error -->
+<div id="error-screen" style="display:none">
+  <div class="icon">⚠</div>
+  <div class="msg" id="error-msg"></div>
+  <button id="retry-btn" class="exp-btn-xlsx">Retry</button>
+</div>
+
+<!-- Dashboard (hidden until data loads) -->
+<div id="app" style="display:none">
+
+  <!-- Header -->
+  <div id="header">
+    <div id="header-top">
+      <div id="title-block">
+        <div class="eco-label">
+          <div style="width:10px;height:10px;background:#3b82f6;border-radius:2px;box-shadow:0 0 8px #3b82f6"></div>
+          Aurora Instrument · Production CCB
+        </div>
+        <h1>Pilot Build Implementation Dashboard</h1>
+        <div class="subtitle">Live tracking · auto-refreshes every 5 minutes</div>
+      </div>
+      <div id="live-bar">
+        <div class="live-dot"></div>
+        <span class="live-label">LIVE</span>
+        <span id="last-updated"></span>
+        <button id="refresh-btn">⟳ Refresh</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Grand Total Banner -->
+  <div id="banner">
+    <div id="grand-total">
+      <span class="num" id="b-total">—</span>
+      <span class="lbl">Grand Total Parts</span>
+    </div>
+    <div class="banner-divider"></div>
+    <div id="banner-stats"></div>
+    <div id="viewing-block">
+      <div class="label">Currently Viewing</div>
+      <div id="viewing-count">— <span>records</span></div>
+    </div>
+  </div>
+
+  <!-- Stats Row -->
+  <div id="stats-row"></div>
+
+  <!-- Tabs -->
+  <div id="tabs"></div>
+
+  <!-- Filters -->
+  <div id="filters">
+    <input id="search" type="text" placeholder="🔍  Search part number, description, ECO, engineer…"/>
+    <select id="filter-eco" class="filter-select"></select>
+    <select id="filter-owner" class="filter-select"></select>
+    <select id="filter-status" class="filter-select"></select>
+    <span id="filter-count"></span>
+  </div>
+
+  <!-- Table -->
+  <div id="table-wrap">
+    <table>
+      <thead id="thead"></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- Footer -->
+  <div id="footer">
+    <span>Aurora Instrument Production CCB · Pilot Build Dashboard · Click any row to expand</span>
+    <div id="export-btns">
+      <span>Export <strong id="exp-count" style="color:#60a5fa">—</strong> filtered records:</span>
+      <button class="exp-btn-csv" id="btn-csv">⬇ CSV</button>
+      <button class="exp-btn-xlsx" id="btn-xlsx">⬇ Excel (.xlsx)</button>
+      <button class="exp-btn-all" id="btn-all">⬇ All (xlsx)</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRspPg-SIm0rB3hK5GMvM28d_8vT5aB7EsIdHbm4Z8G67ZsER_ettpwPHsNjpL4PKUO-bsujoLgSnz4/pub?output=csv";
+const REFRESH_MS = 5 * 60 * 1000;
+
+let ALL_DATA = [];
+let FILTERED  = [];
+let ACTIVE_TAB = "All Parts";
+let EXPANDED_ROW = null;
+const TABS = ["All Parts","Rev Changes","New Part Numbers","Bridge PO","Cut-In","Phase-In","Not Specified"];
+
+// ── parse helpers ──────────────────────────────────────────────────────────
+function fmtDate(v){
+  if(!v) return "";
+  const s=String(v).trim();
+  if(!s||s==="nan"||s==="NaT") return "";
+  if(/^\d{5}$/.test(s)){
+    const d=new Date(Math.round((Number(s)-25569)*86400*1000));
+    return d.toISOString().slice(0,10);
+  }
+  return s;
+}
+function cleanPN(v){
+  if(v===null||v===undefined) return "";
+  const s=String(v).trim().replace(/\.0$/,"");
+  return (s==="nan"||s==="N/A"||s==="NaN")?"":s;
+}
+function clean(v){
+  const s=String(v??'').trim();
+  return (s==="nan"||s==="NaN")?"":s;
+}
+function getChangeType(r){
+  return cleanPN(r["New Part Number PL NIR Required (MCOST)"])?"New Part Number":"Rev Change";
+}
+function getImplType(r){
+  const iv=clean(r["Implementation at Venture"]).toLowerCase();
+  if(iv.includes("phase")) return "Phase-In";
+  if(iv.includes("cut"))   return "Cut-In";
+  const cs=clean(r["Change Status"]).toLowerCase();
+  if(cs.includes("phase")) return "Phase-In";
+  const n=clean(r["Disposition/Implementation Notes"]).toLowerCase();
+  if(n.includes("phase"))          return "Phase-In";
+  if(n.includes("cut in")||n.includes("cut-in")) return "Cut-In";
+  return "Not Specified";
+}
+function parseCSV(text){
+  const lines=text.split("\n");
+  let hi=0;
+  for(let i=0;i<Math.min(5,lines.length);i++){
+    if(lines[i].includes("Part Number")&&lines[i].includes("ECO")){hi=i;break;}
+  }
+  const csv=lines.slice(hi).join("\n");
+  const {data}=Papa.parse(csv,{header:true,skipEmptyLines:true});
+  return data.map(r=>{
+    const pn=cleanPN(r["Part Number"]);
+    const np=cleanPN(r["New Part Number PL NIR Required (MCOST)"]);
+    if(!pn&&!np) return null;
+    const bp=clean(r["PL Bridge PO"]).replace(/\n/g," ");
+    return{
+      dateAdded:fmtDate(r["Date Added"]),
+      partNumber:pn, newPartNumber:np,
+      description:clean(r["Description"]),
+      rev:clean(r["REV (After ECO)"]),
+      ecoNumber:clean(r["ECO #"]),
+      ecoStatus:clean(r["ECO Status"]),
+      changeStatus:clean(r["Change Status"]),
+      changeType:getChangeType(r),
+      implementationType:getImplType(r),
+      implAtVenture:clean(r["Implementation at Venture"]),
+      rdOwner:clean(r["R&D Owner"]),
+      bridgePO:bp, bridgeQty:cleanPN(r["PL Bridge QTY"]),
+      hasBridgePO:bp?"Yes":"No",
+      remarks:clean(r["Remarks"]),
+      singaporeOwner:clean(r["Singapore Owner"]),
+      implNotes:clean(r["Disposition/Implementation Notes"]),
+      ecoReleaseDate:fmtDate(r["ECO Release Date"]),
+      implDate:fmtDate(r["Implementation Date (for Phase-In parts at Venture)"]),
+    };
+  }).filter(Boolean);
+}
+
+// ── fetch ──────────────────────────────────────────────────────────────────
+async function fetchData(silent=false){
+  if(!silent){
+    document.getElementById("loading-screen").style.display="flex";
+    document.getElementById("app").style.display="none";
+    document.getElementById("error-screen").style.display="none";
+  }
+  try{
+    const res=await fetch(CSV_URL+"&t="+Date.now());
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    const text=await res.text();
+    ALL_DATA=parseCSV(text);
+    document.getElementById("last-updated").textContent=
+      "Updated "+new Date().toLocaleTimeString();
+    render();
+    document.getElementById("loading-screen").style.display="none";
+    document.getElementById("app").style.display="block";
+  } catch(e){
+    document.getElementById("loading-screen").style.display="none";
+    document.getElementById("error-screen").style.display="flex";
+    document.getElementById("error-msg").textContent="Could not load data: "+e.message+
+      "\n\nMake sure the Google Sheet is published to web (File → Share → Publish to web → CSV).";
+  }
+}
+
+// ── stats ──────────────────────────────────────────────────────────────────
+function calcStats(d){
+  return{
+    total:       d.length,
+    revChanges:  d.filter(r=>r.changeType==="Rev Change").length,
+    newPNs:      d.filter(r=>r.changeType==="New Part Number").length,
+    cutIn:       d.filter(r=>r.implementationType==="Cut-In").length,
+    phaseIn:     d.filter(r=>r.implementationType==="Phase-In").length,
+    notSpecified:d.filter(r=>r.implementationType==="Not Specified").length,
+    bridgePO:    d.filter(r=>r.hasBridgePO==="Yes").length,
+    open:        d.filter(r=>r.changeStatus==="Open").length,
+    complete:    d.filter(r=>r.changeStatus==="No further action required").length,
+  };
+}
+
+// ── badge helpers ──────────────────────────────────────────────────────────
+function ecoClass(s){
+  const v=s.toLowerCase();
+  if(v==="effective"||v==="complete"||v==="approved") return "eco-effective";
+  if(v.includes("approval")) return "eco-approvals";
+  if(v.includes("open"))     return "eco-open";
+  return "eco-blank";
+}
+function csClass(s){
+  if(!s) return "cs-blank";
+  if(s==="No further action required") return "cs-done";
+  if(s==="Open")     return "cs-open";
+  if(s==="Phase-In") return "cs-phasein";
+  if(s==="TBC")      return "cs-tbc";
+  return "cs-blank";
+}
+function implClass(s){
+  if(s==="Cut-In")  return "impl-cutin";
+  if(s==="Phase-In")return "impl-phasein";
+  return "impl-ns";
+}
+
+// ── filter ─────────────────────────────────────────────────────────────────
+function applyFilters(){
+  const search=document.getElementById("search").value.toLowerCase().trim();
+  const eco=document.getElementById("filter-eco").value;
+  const owner=document.getElementById("filter-owner").value;
+  const status=document.getElementById("filter-status").value;
+
+  FILTERED=ALL_DATA.filter(r=>{
+    if(ACTIVE_TAB==="Rev Changes"      && r.changeType!=="Rev Change")       return false;
+    if(ACTIVE_TAB==="New Part Numbers" && r.changeType!=="New Part Number")   return false;
+    if(ACTIVE_TAB==="Bridge PO"        && r.hasBridgePO!=="Yes")             return false;
+    if(ACTIVE_TAB==="Cut-In"           && r.implementationType!=="Cut-In")   return false;
+    if(ACTIVE_TAB==="Phase-In"         && r.implementationType!=="Phase-In") return false;
+    if(ACTIVE_TAB==="Not Specified"    && r.implementationType!=="Not Specified") return false;
+    if(eco!=="All"    && r.ecoNumber!==eco)   return false;
+    if(owner!=="All"  && r.rdOwner!==owner)   return false;
+    if(status!=="All"){
+      if(status==="— (Blank)" && r.changeStatus!=="") return false;
+      if(status!=="— (Blank)" && r.changeStatus!==status) return false;
+    }
+    if(search){
+      const hay=[r.partNumber,r.newPartNumber,r.description,r.ecoNumber,r.rdOwner,r.bridgePO].join(" ").toLowerCase();
+      if(!hay.includes(search)) return false;
+    }
+    return true;
+  });
+
+  renderTable();
+  document.getElementById("viewing-count").innerHTML=FILTERED.length+' <span>records</span>';
+  document.getElementById("filter-count").innerHTML=
+    'Showing <strong style="color:#fbbf24">'+FILTERED.length+'</strong> of <strong style="color:#60a5fa">'+ALL_DATA.length+'</strong> total parts';
+  document.getElementById("exp-count").textContent=FILTERED.length;
+}
+
+// ── render ─────────────────────────────────────────────────────────────────
+function render(){
+  const stats=calcStats(ALL_DATA);
+
+  // Banner
+  document.getElementById("b-total").textContent=stats.total;
+  const bStats=[
+    {label:"Rev Changes", val:stats.revChanges, color:"#34d399"},
+    {label:"New Part #s", val:stats.newPNs,     color:"#f472b6"},
+    {label:"Cut-In",      val:stats.cutIn,      color:"#60a5fa"},
+    {label:"Phase-In",    val:stats.phaseIn,    color:"#a78bfa"},
+    {label:"Not Specified",val:stats.notSpecified,color:"#64748b"},
+  ];
+  document.getElementById("banner-stats").innerHTML=bStats.map(s=>`
+    <div class="banner-stat">
+      <span class="val" style="color:${s.color}">${s.val}</span>
+      <div class="meta">
+        <div class="name">${s.label}</div>
+        <div class="pct">${Math.round(s.val/stats.total*100)}% of total</div>
+      </div>
+    </div>`).join("");
+
+  // Stats row
+  const tiles=[
+    {l:"Total Parts",   v:stats.total,        c:"#60a5fa"},
+    {l:"Rev Changes",   v:stats.revChanges,   c:"#34d399"},
+    {l:"New Part #s",   v:stats.newPNs,       c:"#f472b6"},
+    {l:"Cut-In",        v:stats.cutIn,        c:"#60a5fa"},
+    {l:"Phase-In",      v:stats.phaseIn,      c:"#a78bfa"},
+    {l:"Not Specified", v:stats.notSpecified, c:"#64748b"},
+    {l:"Bridge PO",     v:stats.bridgePO,     c:"#fb923c"},
+    {l:"Open",          v:stats.open,         c:"#facc15"},
+    {l:"Complete",      v:stats.complete,     c:"#4ade80"},
+  ];
+  document.getElementById("stats-row").innerHTML=tiles.map(t=>`
+    <div class="stat-tile">
+      <div class="n" style="color:${t.c}">${t.v}</div>
+      <div class="l">${t.l}</div>
+    </div>`).join("");
+
+  // Tabs
+  document.getElementById("tabs").innerHTML=TABS.map(t=>`
+    <button class="tab${t===ACTIVE_TAB?" active":""}" data-tab="${t}">${t}</button>`).join("");
+  document.querySelectorAll(".tab").forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      ACTIVE_TAB=btn.dataset.tab;
+      document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+      EXPANDED_ROW=null;
+      applyFilters();
+    });
+  });
+
+  // Populate filter dropdowns
+  const ecos=["All",...[...new Set(ALL_DATA.map(r=>r.ecoNumber).filter(Boolean))].sort()];
+  const owners=["All",...[...new Set(ALL_DATA.map(r=>r.rdOwner).filter(Boolean))].sort()];
+  const statuses=["All",...[...new Set(ALL_DATA.map(r=>r.changeStatus).filter(Boolean))].sort(),"— (Blank)"];
+
+  function populateSelect(id,opts,label){
+    const sel=document.getElementById(id);
+    const cur=sel.value||"All";
+    sel.innerHTML=opts.map(o=>`<option value="${o}">${label}: ${o==="All"?"All":o}</option>`).join("");
+    sel.value=opts.includes(cur)?cur:"All";
+  }
+  populateSelect("filter-eco",   ecos,   "ECO");
+  populateSelect("filter-owner", owners, "R&D Owner");
+  populateSelect("filter-status",statuses,"K · Change Status");
+
+  // Table header
+  const cols=[
+    {k:"A",h:"Date Added",w:100},{k:"B",h:"Old Part #",w:130},{k:"C",h:"New Part #",w:130},
+    {k:"D",h:"Description",w:230},{k:"E",h:"Change Type",w:140},{k:"F",h:"Rev",w:70},
+    {k:"G",h:"ECO #",w:120},{k:"H",h:"ECO Status",w:120},{k:"I",h:"ECO Release",w:110},
+    {k:"J",h:"Implementation",w:120},{k:"K",h:"Change Status",w:160},{k:"L",h:"R&D Engineer",w:140},
+    {k:"M",h:"PL Bridge PO",w:120},{k:"N",h:"Bridge QTY",w:90},{k:"O",h:"SG Owner",w:100},
+    {k:"P",h:"Impl. Date",w:110},{k:"Q",h:"Remarks",w:260},{k:"R",h:"Impl. Notes",w:260},
+  ];
+  document.getElementById("thead").innerHTML=`<tr>${cols.map(c=>`
+    <th style="min-width:${c.w}px"><span class="col-key">${c.k}</span>${c.h}</th>`).join("")}</tr>`;
+
+  applyFilters();
+}
+
+// ── table rows ─────────────────────────────────────────────────────────────
+function renderTable(){
+  const tbody=document.getElementById("tbody");
+  if(FILTERED.length===0){
+    tbody.innerHTML=`<tr><td colspan="18" style="padding:40px;text-align:center;color:#475569">No records match your filters.</td></tr>`;
+    return;
+  }
+
+  const rows=[];
+  FILTERED.forEach((r,idx)=>{
+    const isExp=(EXPANDED_ROW===idx);
+    const phaseClass=r.implementationType==="Phase-In"?" phase-in-row":"";
+    const expClass=isExp?" expanded":"";
+
+    rows.push(`<tr class="data-row${phaseClass}${expClass}" data-idx="${idx}">
+      <td style="color:#64748b;white-space:nowrap">${r.dateAdded||"—"}</td>
+      <td><span style="color:#60a5fa;font-weight:700">${r.partNumber||'<span style="color:#475569">—</span>'}</span></td>
+      <td>${r.newPartNumber?`<span style="color:#f472b6;font-weight:700">${r.newPartNumber}</span>`:'<span style="color:#334155">—</span>'}</td>
+      <td style="color:#cbd5e1;max-width:230px"><div class="trunc">${r.description}</div></td>
+      <td><span class="badge ${r.changeType==="New Part Number"?"ct-new":"ct-rev"}">${r.changeType}</span></td>
+      <td style="text-align:center"><span style="color:#fbbf24;font-weight:700">${r.rev||"—"}</span></td>
+      <td style="color:#a5b4fc;white-space:nowrap">${r.ecoNumber}</td>
+      <td><span class="badge ${ecoClass(r.ecoStatus)}">${r.ecoStatus||"—"}</span></td>
+      <td style="color:#64748b;white-space:nowrap">${r.ecoReleaseDate||"—"}</td>
+      <td><span class="badge ${implClass(r.implementationType)}">${r.implementationType}</span></td>
+      <td><span class="badge ${csClass(r.changeStatus)}">${r.changeStatus||"—"}</span></td>
+      <td style="color:#94a3b8;white-space:nowrap">${r.rdOwner||"—"}</td>
+      <td>${r.bridgePO?`<span style="color:#fb923c;font-weight:700">${r.bridgePO}</span>`:'<span style="color:#334155">—</span>'}</td>
+      <td style="color:#fbbf24;text-align:center">${r.bridgeQty||"—"}</td>
+      <td style="color:#94a3b8;white-space:nowrap">${r.singaporeOwner||"—"}</td>
+      <td style="color:#64748b;white-space:nowrap">${r.implDate||"—"}</td>
+      <td style="color:#94a3b8;max-width:260px"><div class="trunc">${r.remarks||"—"}</div></td>
+      <td style="color:#64748b;max-width:260px"><div class="trunc">${r.implNotes||"—"}</div></td>
+    </tr>`);
+
+    if(isExp){
+      const fields=[
+        ["Old Part Number",r.partNumber||"—"],["New Part Number",r.newPartNumber||"—"],
+        ["Description",r.description||"—"],["Change Type",r.changeType],
+        ["Rev After ECO",r.rev||"—"],["ECO Number",r.ecoNumber],
+        ["ECO Status",r.ecoStatus||"—"],["ECO Release Date",r.ecoReleaseDate||"—"],
+        ["Implementation Type",r.implementationType],["Impl. at Venture (src)",r.implAtVenture||"—"],
+        ["Change Status",r.changeStatus||"—"],["R&D Engineer",r.rdOwner||"—"],
+        ["Singapore Owner",r.singaporeOwner||"—"],["Bridge PO",r.bridgePO||"—"],
+        ["Bridge QTY",r.bridgeQty||"—"],["Date Added",r.dateAdded||"—"],
+        ["Implementation Date",r.implDate||"—"],
+      ];
+      rows.push(`<tr class="exp-row"><td colspan="18">
+        <div class="exp-grid">
+          ${fields.map(([k,v])=>`<div class="exp-field"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("")}
+          <div class="exp-notes">
+            <div class="exp-field"><div class="k">Implementation Notes</div></div>
+            <div class="exp-note-box exp-note-blue">${r.implNotes||"—"}</div>
+          </div>
+          ${r.remarks?`<div class="exp-notes">
+            <div class="exp-field"><div class="k">Remarks</div></div>
+            <div class="exp-note-box exp-note-pink">${r.remarks}</div>
+          </div>`:""}
+        </div>
+      </td></tr>`);
+    }
+  });
+
+  tbody.innerHTML=rows.join("");
+
+  // Row click handlers
+  document.querySelectorAll(".data-row").forEach(row=>{
+    row.addEventListener("click",()=>{
+      const idx=parseInt(row.dataset.idx);
+      EXPANDED_ROW=(EXPANDED_ROW===idx)?null:idx;
+      renderTable();
+    });
+  });
+}
+
+// ── export ─────────────────────────────────────────────────────────────────
+function exportData(data,format){
+  const headers=["Date Added","Old Part Number","New Part Number","Description","Change Type",
+    "Rev (After ECO)","ECO Number","ECO Status","ECO Release Date","Implementation Type",
+    "Change Status","R&D Engineer","PL Bridge PO","Bridge QTY","Singapore Owner",
+    "Implementation Date","Remarks","Implementation Notes"];
+  const rows=data.map(r=>[r.dateAdded,r.partNumber,r.newPartNumber,r.description,r.changeType,
+    r.rev,r.ecoNumber,r.ecoStatus,r.ecoReleaseDate,r.implementationType,r.changeStatus,
+    r.rdOwner,r.bridgePO,r.bridgeQty,r.singaporeOwner,r.implDate,r.remarks,r.implNotes]);
+
+  if(format==="csv"){
+    const esc=v=>`"${String(v??'').replace(/"/g,'""')}"`;
+    const csv=[headers,...rows].map(row=>row.map(esc).join(",")).join("\n");
+    const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download="Aurora_Pilot_Build_CCB.csv";
+    a.click();
+  } else {
+    const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
+    ws["!cols"]=[10,16,16,32,16,8,14,14,14,14,22,18,14,10,12,14,36,40].map(w=>({wch:w}));
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"Pilot Build CCB");
+    XLSX.writeFile(wb,"Aurora_Pilot_Build_CCB.xlsx");
+  }
+}
+
+// ── event wiring ───────────────────────────────────────────────────────────
+document.getElementById("refresh-btn").addEventListener("click",()=>fetchData(true));
+document.getElementById("retry-btn").addEventListener("click",()=>fetchData());
+document.getElementById("search").addEventListener("input",()=>{EXPANDED_ROW=null;applyFilters();});
+document.getElementById("filter-eco").addEventListener("change",()=>{EXPANDED_ROW=null;applyFilters();});
+document.getElementById("filter-owner").addEventListener("change",()=>{EXPANDED_ROW=null;applyFilters();});
+document.getElementById("filter-status").addEventListener("change",()=>{EXPANDED_ROW=null;applyFilters();});
+document.getElementById("btn-csv").addEventListener("click",()=>exportData(FILTERED,"csv"));
+document.getElementById("btn-xlsx").addEventListener("click",()=>exportData(FILTERED,"xlsx"));
+document.getElementById("btn-all").addEventListener("click",()=>exportData(ALL_DATA,"xlsx"));
+
+// ── init ───────────────────────────────────────────────────────────────────
+fetchData();
+setInterval(()=>fetchData(true), REFRESH_MS);
+</script>
+</body>
+</html>
