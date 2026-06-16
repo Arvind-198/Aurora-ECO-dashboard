@@ -1,10 +1,9 @@
 name: Build Dashboard
 
 on:
-  push:
-    paths:
-      - 'data/CCB_Data.xlsx'   # runs whenever you upload a new spreadsheet
-  workflow_dispatch:            # also allows manual trigger from GitHub UI
+  schedule:
+    - cron: '0 */6 * * *'   # runs every 6 hours automatically
+  workflow_dispatch:          # also allows manual trigger from GitHub UI
 
 jobs:
   build:
@@ -24,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: pip install pandas openpyxl
 
-      - name: Build dashboard HTML
+      - name: Build dashboard from Google Sheets
         run: python scripts/build_dashboard.py
 
       - name: Commit and push index.html
