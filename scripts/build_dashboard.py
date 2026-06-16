@@ -1,14 +1,41 @@
 #!/usr/bin/env python3
 """
 build_dashboard.py
-Reads CCB_Data.xlsx and generates index.html
-Run automatically by GitHub Actions on every push.
+Fetches live data from Google Sheets and generates index.html.
+Triggered automatically by GitHub Actions on a schedule or manual run.
+To update the data source: change SHEETS_CSV_URL below.
 """
-import json, datetime, sys, os
+import json, datetime, sys, os, io
 import pandas as pd
+import urllib.request
 
-DATA_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', 'CCB_Data.xlsx')
-OUT_FILE  = os.path.join(os.path.dirname(__file__), '..', 'index.html')
+# ── UPDATE THIS URL if your Google Sheet changes ─────────────────────────────
+SHEETS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRspPg-SIm0rB3hK5GMvM28d_8vT5aB7EsIdHbm4Z8G67ZsER_ettpwPHsNjpL4PKUO-bsujoLgSnz4/pub?output=csv&gid=0"
+
+OUT_FILE = os.path.join(os.path.dirname(__file__), '..', 'index.html')
+
+def load_data():
+    for attempt in range(3):
+        try:
+            print(f"Fetching from Google Sheets (attempt {attempt+1})...")
+            req = urllib.request.Request(SHEETS_CSV_URL, headers={"User-Agent":"Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                raw = resp.read().decode('utf-8')
+            lines = raw.split('\n')
+            hi = 0
+            for i, line in enumerate(lines[:10]):
+                if 'Part Number' in line and 'ECO' in line:
+                    hi = i; break
+                if 'Date Added' in line and 'Description' in line:
+                    hi = i; break
+            df = pd.read_csv(io.StringIO('\n'.join(lines[hi:])))
+            df = df.fillna('')
+            print(f"Fetched {len(df)} rows (header at row {hi})")
+            return df
+        except Exception as e:
+            print(f"Attempt {attempt+1} failed: {e}")
+    print("ERROR: Could not fetch from Google Sheets")
+    sys.exit(1)
 
 def get_change_type(row, col):
     new_pn = str(row[col]).strip().replace('.0','')
@@ -45,9 +72,7 @@ def sanitize(v):
              .replace('\t',' ').replace('</script>','<\\/script>').strip())
 
 def build():
-    print(f"Reading {DATA_FILE}...")
-    df = pd.read_excel(DATA_FILE, sheet_name='CCB Actions', header=1)
-    df = df.fillna('')
+    df = load_data()
 
     # Find new part number column (name may vary)
     np_col = next((c for c in df.columns if 'New Part Number' in c), None)
