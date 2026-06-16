@@ -38,16 +38,19 @@ def load_data():
     sys.exit(1)
 
 def get_change_type(row, col):
+    if col not in row.index: return 'Rev Change'
     new_pn = str(row[col]).strip().replace('.0','')
     return 'New Part Number' if new_pn and new_pn not in ['', 'nan', 'N/A', 'NaN'] else 'Rev Change'
 
 def get_impl_type(row):
-    iv = str(row['Implementation at Venture']).strip().lower()
+    def sg(col):
+        return str(row[col]).strip().lower() if col in row.index else ''
+    iv = sg('Implementation at Venture')
     if 'phase' in iv: return 'Phase-In'
     if 'cut'   in iv: return 'Cut-In'
-    cs = str(row['Change Status']).strip().lower()
+    cs = sg('Change Status')
     if 'phase' in cs: return 'Phase-In'
-    notes = str(row['Disposition/Implementation Notes']).strip().lower()
+    notes = sg('Disposition/Implementation Notes')
     if 'phase' in notes: return 'Phase-In'
     if 'cut in' in notes or 'cut-in' in notes: return 'Cut-In'
     return 'Not Specified'
@@ -73,6 +76,9 @@ def sanitize(v):
 
 def build():
     df = load_data()
+    # Normalize column names - strip whitespace
+    df.columns = [str(c).strip() for c in df.columns]
+    print("Columns:", df.columns.tolist())
 
     # Find new part number column (name may vary)
     np_col = next((c for c in df.columns if 'New Part Number' in c), None)
@@ -87,37 +93,44 @@ def build():
         pn  = clean_pn(r['Part Number'])
         np_ = clean_pn(r[np_col])
         if not pn and not np_: continue
-        bp = sanitize(clean(r['PL Bridge PO']))
+        bp = sanitize(clean(r['PL Bridge PO'] if 'PL Bridge PO' in r.index else (r['Bridge PO'] if 'Bridge PO' in r.index else '')))
 
         # Optional columns (may not exist in older versions)
         def safe(col):
             return clean(r[col]) if col in df.columns else ''
 
+        # Use g() to safely get any column by checking multiple possible names
+        def g(primary, *fallbacks):
+            for col in [primary] + list(fallbacks):
+                if col in r.index and str(r[col]).strip() not in ['','nan','NaN']:
+                    return r[col]
+            return ''
+
         rec = {
-            'dateAdded':          fmt_date(r['Date Added']),
+            'dateAdded':          fmt_date(g('Date Added')),
             'partNumber':         pn,
             'newPartNumber':      np_,
-            'description':        sanitize(clean(r['Description'])),
-            'rev':                clean(r['REV (After ECO)']),
-            'ecoNumber':          clean(r['ECO #']),
-            'ecoStatus':          clean(r['ECO Status']),
-            'changeStatus':       clean(r['Change Status']),
+            'description':        sanitize(clean(g('Description'))),
+            'rev':                clean(g('REV (After ECO)','Rev (After ECO)','REV')),
+            'ecoNumber':          clean(g('ECO #','ECO#','ECO Number')),
+            'ecoStatus':          clean(g('ECO Status')),
+            'changeStatus':       clean(g('Change Status')),
             'changeType':         get_change_type(r, np_col),
             'implementationType': get_impl_type(r),
-            'implAtVenture':      sanitize(clean(r['Implementation at Venture'])),
-            'rdOwner':            clean(r['R&D Owner']),
+            'implAtVenture':      sanitize(clean(g('Implementation at Venture'))),
+            'rdOwner':            clean(g('R&D Owner','R&D Owner ')),
             'bridgePO':           bp,
-            'bridgeQty':          clean_pn(r['PL Bridge QTY']),
+            'bridgeQty':          clean_pn(g('PL Bridge QTY','Bridge QTY')),
             'hasBridgePO':        'Yes' if bp else 'No',
-            'remarks':            sanitize(clean(r['Remarks'])),
-            'singaporeOwner':     clean(r['Singapore Owner']),
-            'implNotes':          sanitize(clean(r['Disposition/Implementation Notes'])),
-            'ecoReleaseDate':     fmt_date(r['ECO Release Date']),
-            'implDate':           fmt_date(r['Implementation Date (for Phase-In parts at Venture)']),
-            'nirStatus':          safe('NIR Status (PL)'),
-            'buyerName':          safe('Buyer Name '),
-            'openPO':             safe('Open PO'),
-            'plAction':           sanitize(safe('PL - Procurement Action')),
+            'remarks':            sanitize(clean(g('Remarks'))),
+            'singaporeOwner':     clean(g('Singapore Owner','SG Owner')),
+            'implNotes':          sanitize(clean(g('Disposition/Implementation Notes','Implementation Notes'))),
+            'ecoReleaseDate':     fmt_date(g('ECO Release Date','ECO Release')),
+            'implDate':           fmt_date(g('Implementation Date (for Phase-In parts at Venture)','Implementation Date')),
+            'nirStatus':          clean(g('NIR Status (PL)','NIR Status')),
+            'buyerName':          clean(g('Buyer Name ','Buyer Name','Buyer')),
+            'openPO':             clean(g('Open PO')),
+            'plAction':           sanitize(clean(g('PL - Procurement Action','Procurement Action'))),
         }
         records.append(rec)
 
