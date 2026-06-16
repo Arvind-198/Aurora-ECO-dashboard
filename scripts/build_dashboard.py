@@ -10,7 +10,7 @@ import pandas as pd
 import urllib.request
 
 # ── UPDATE THIS URL if your Google Sheet changes ─────────────────────────────
-SHEETS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRspPg-SIm0rB3hK5GMvM28d_8vT5aB7EsIdHbm4Z8G67ZsER_ettpwPHsNjpL4PKUO-bsujoLgSnz4/pub?output=csv&gid=0"
+SHEETS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRspPg-SIm0rB3hK5GMvM28d_8vT5aB7EsIdHbm4Z8G67ZsER_ettpwPHsNjpL4PKUO-bsujoLgSnz4/pub?output=csv"
 
 OUT_FILE = os.path.join(os.path.dirname(__file__), '..', 'index.html')
 
@@ -31,6 +31,7 @@ def load_data():
             df = pd.read_csv(io.StringIO('\n'.join(lines[hi:])))
             df = df.fillna('')
             print(f"Fetched {len(df)} rows (header at row {hi})")
+            print(f"Columns found: {df.columns.tolist()[:8]}")
             return df
         except Exception as e:
             print(f"Attempt {attempt+1} failed: {e}")
@@ -135,6 +136,10 @@ def build():
         records.append(rec)
 
     print(f"Parsed {len(records)} records")
+    if len(records) == 0:
+        print("ERROR: No records parsed! Check column names above.")
+        print("Available columns:", df.columns.tolist())
+        sys.exit(1)
 
     edata = json.dumps(records, separators=(',',':'), ensure_ascii=True)
     assert '\n' not in edata, "Newlines in JSON!"
@@ -145,7 +150,7 @@ def build():
 
     with open(OUT_FILE, 'w') as f:
         f.write(html)
-    print(f"Written {OUT_FILE} ({len(html)//1024}KB)")
+    print(f"Written {OUT_FILE} ({len(html)//1024}KB) with {len(records)} records")
 
 def generate_html(edata, snap_date, total):
     return """<!DOCTYPE html>
